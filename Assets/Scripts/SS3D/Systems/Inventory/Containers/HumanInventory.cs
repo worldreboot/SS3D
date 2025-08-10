@@ -304,6 +304,14 @@ namespace SS3D.Systems.Inventory.Containers
             CmdTransferItem(item.gameObject, position, targetContainer);
         }
 
+        /// <summary>
+        /// Requests the server to merge an item into a stack at a given container slot.
+        /// </summary>
+        public void ClientStackItem(Item sourceItem, Vector2Int position, AttachedContainer targetContainer)
+        {
+            CmdStackItem(sourceItem.gameObject, position, targetContainer);
+        }
+
         [ServerRpc]
         private void CmdTransferItem(GameObject itemObject, Vector2Int position, AttachedContainer container)
         {
@@ -345,6 +353,70 @@ namespace SS3D.Systems.Inventory.Containers
             itemContainer.TransferItemToOther(item, position, container);     
         }
 
+        [ServerRpc]
+        private void CmdStackItem(GameObject sourceObject, Vector2Int position, AttachedContainer targetContainer)
+        {
+            Item source = sourceObject.GetComponent<Item>();
+            if (source == null || targetContainer == null)
+            {
+                return;
+            }
+
+            AttachedContainer sourceContainer = source.Container;
+            if (sourceContainer == null)
+            {
+                return;
+            }
+
+            // Can't put an item in its own container hierarchy
+            if (source.GetComponentsInChildren<AttachedContainer>().AsEnumerable().Contains(targetContainer))
+            {
+                Log.Warning(this, "can't put an item in its own container");
+                return;
+            }
+
+            if (!containerViewer.CanModifyContainer(sourceContainer) || !containerViewer.CanModifyContainer(targetContainer))
+            {
+                return;
+            }
+
+            Hands hands = GetComponent<Hands>();
+            if (hands == null || !hands.SelectedHand.CanInteract(targetContainer.gameObject))
+            {
+                return;
+            }
+
+            Item target = targetContainer.ItemAt(position);
+            if (target == null)
+            {
+                return; // nothing to stack into
+            }
+
+            if (!source.TryGetComponent(out Items.Stackable sourceStack) || !target.TryGetComponent(out Items.Stackable targetStack))
+            {
+                return;
+            }
+
+            if (!targetStack.CanStackWith(source))
+            {
+                return;
+            }
+
+            // Move as many as fit
+            int moved = targetStack.AddFrom(sourceStack);
+
+            // If source became empty, remove and despawn it
+            if (sourceStack.CurrentStackSize <= 0)
+            {
+                // Remove from its container and despawn
+                if (sourceContainer.FindItem(source, out int _))
+                {
+                    sourceContainer.RemoveItem(source);
+                }
+                source.Despawn(source.GameObject);
+            }
+        }
+
 
 
         /// <summary>
@@ -377,9 +449,21 @@ namespace SS3D.Systems.Inventory.Containers
             // If selected hand has an item and there's no item on the slot in the container, transfer it to container slot.
             else
             {
+                Item held = Hands.SelectedHand.ItemInHand;
                 if (item == null)
                 {
-                    ClientTransferItem(Hands.SelectedHand.ItemInHand, position, container);
+                    ClientTransferItem(held, position, container);
+                }
+                else
+                {
+                    // Attempt stacking when clicking an occupied slot with a compatible stack
+                    if (held != null && held.TryGetComponent(out SS3D.Systems.Inventory.Items.Stackable s1) && item.TryGetComponent(out SS3D.Systems.Inventory.Items.Stackable s2))
+                    {
+                        if (s2.CanStackWith(held))
+                        {
+                            ClientStackItem(held, position, container);
+                        }
+                    }
                 }
             }
         }

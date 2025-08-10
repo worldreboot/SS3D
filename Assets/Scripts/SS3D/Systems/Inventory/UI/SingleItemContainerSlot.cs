@@ -58,6 +58,16 @@ namespace SS3D.Systems.Inventory.UI
         {
             Item item = display.Item;
 
+            // If occupied and both stackable, merge into the occupant
+            Item occupant = _container.Items.FirstOrDefault();
+            if (occupant != null && item != null && item.TryGetComponent(out Stackable s1) && occupant.TryGetComponent(out Stackable s2))
+            {
+                display.ShouldDrop = true;
+                display.MakeVisible(false);
+                Inventory.ClientStackItem(item, new Vector2Int(0, 0), _container);
+                return;
+            }
+
             if (!_container.CanContainItem(display.Item))
             {
                 return;

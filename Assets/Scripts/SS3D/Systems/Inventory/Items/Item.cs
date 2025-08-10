@@ -87,6 +87,11 @@ namespace SS3D.Systems.Inventory.Items
         private bool _initialised = false;
         
         /// <summary>
+        /// Convenience: whether this item has a Stackable component.
+        /// </summary>
+        public bool IsStackable => TryGetComponent(out Stackable _);
+        
+        /// <summary>
         /// All colliders, related to the item, except of colliders, related to stored items
         /// </summary>
         private Collider[] _nativeColliders;
@@ -271,7 +276,17 @@ namespace SS3D.Systems.Inventory.Items
 
         public virtual IInteraction[] CreateTargetInteractions(InteractionEvent interactionEvent)
         {
-            return new IInteraction[] { new PickupInteraction { Icon = null } };
+            // Base pickup interaction
+            var interactions = new List<IInteraction> { new PickupInteraction { Icon = null } };
+
+            // Stack interactions if applicable
+            if (TryGetComponent(out Stackable stackable))
+            {
+                interactions.Add(new StackTakeOneInteraction());
+                interactions.Add(new StackAddOneInteraction());
+            }
+
+            return interactions.ToArray();
         }
 
         // this creates the base interactions for an item, in this case, the drop interaction

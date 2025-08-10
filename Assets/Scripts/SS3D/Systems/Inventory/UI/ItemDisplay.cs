@@ -35,6 +35,7 @@ namespace SS3D.Systems.Inventory.UI
             {
                 _item = value;
                 UpdateDisplay();
+                HookStackable();
             }
         }
 
@@ -49,13 +50,24 @@ namespace SS3D.Systems.Inventory.UI
             }
             if (!_outlineOuter)
             {
-                _outlineInner = ItemImage.gameObject.AddComponent<Outline>();
-                _outlineInner.effectColor = new Color(0, 0, 0, 0.2f);
-                _outlineInner.effectDistance = new Vector2(0.8f, 0.8f);
+                _outlineOuter = ItemImage.gameObject.AddComponent<Outline>();
+                _outlineOuter.effectColor = new Color(0, 0, 0, 0.2f);
+                _outlineOuter.effectDistance = new Vector2(0.8f, 0.8f);
             }
             if (_item != null)
             {
                 UpdateDisplay();
+                HookStackable();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // Unsubscribe to avoid callbacks after UI was destroyed
+            if (_stackable != null)
+            {
+                _stackable.OnStackCountChanged -= HandleStackCountChanged;
+                _stackable = null;
             }
         }
 
@@ -142,6 +154,8 @@ namespace SS3D.Systems.Inventory.UI
             Color imageColor = ItemImage.color;
             imageColor.a = ItemImage.sprite != null ? 255 : 0;
             ItemImage.color = imageColor;
+
+            UpdateCountBadge();
         }
 
 		public void MakeVisible(bool visible)
@@ -152,6 +166,78 @@ namespace SS3D.Systems.Inventory.UI
 				image.enabled = visible;
 			}
 		}
+
+        // -------- Stack UI badge --------
+        [SerializeField] private Text _countText;
+        private Stackable _stackable;
+
+        private void HookStackable()
+        {
+            if (_stackable != null)
+            {
+                _stackable.OnStackCountChanged -= HandleStackCountChanged;
+                _stackable = null;
+            }
+            if (_item != null && _item.TryGetComponent(out Stackable stack))
+            {
+                _stackable = stack;
+                _stackable.OnStackCountChanged += HandleStackCountChanged;
+                UpdateCountBadge();
+            }
+            else
+            {
+                UpdateCountBadge();
+            }
+        }
+
+        private void HandleStackCountChanged(int newValue)
+        {
+            UpdateCountBadge();
+        }
+
+        private void UpdateCountBadge()
+        {
+            // Bail out if UI was destroyed or not set up
+            if (this == null || ItemImage == null)
+            {
+                return;
+            }
+
+            if (_countText == null)
+            {
+                // Create a small text badge in bottom-right if not wired in prefab.
+                var go = new GameObject("CountBadge", typeof(RectTransform), typeof(Text));
+                go.transform.SetParent(ItemImage.transform, false);
+                var rt = (RectTransform)go.transform;
+                rt.anchorMin = new Vector2(1, 0);
+                rt.anchorMax = new Vector2(1, 0);
+                rt.pivot = new Vector2(1, 0);
+                rt.anchoredPosition = new Vector2(-4, 4);
+                _countText = go.GetComponent<Text>();
+                _countText.alignment = TextAnchor.LowerRight;
+                _countText.color = Color.white;
+                _countText.fontSize = 14;
+                _countText.raycastTarget = false;
+                // Try to inherit a font from existing Image canvas.
+                _countText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+                var outline = go.AddComponent<Outline>();
+                outline.effectColor = Color.black;
+                outline.effectDistance = new Vector2(1, 1);
+            }
+
+            int value = 1;
+            if (_item != null && _item.TryGetComponent(out Stackable st))
+            {
+                value = Mathf.Max(1, st.CurrentStackSize);
+            }
+
+            bool show = value > 1;
+            if (_countText != null)
+            {
+                _countText.text = show ? value.ToString() : string.Empty;
+                _countText.enabled = show;
+            }
+        }
 
 	}
 }

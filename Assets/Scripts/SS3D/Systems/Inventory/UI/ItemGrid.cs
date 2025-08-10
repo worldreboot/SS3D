@@ -10,6 +10,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using SS3D.Systems.Inventory.Items;
 
 namespace SS3D.Systems.Inventory.UI
 {
@@ -209,18 +210,32 @@ namespace SS3D.Systems.Inventory.UI
 
             Vector2Int slot = new(Mathf.RoundToInt(position.x - 1 / 2f), Mathf.RoundToInt(position.y - 1 / 2f));
 
-			if (!AttachedContainer.CanContainItemAtPosition(item, slot))
-			{
-				return;
-			}
+            // If the slot is occupied, try stacking first
+            Item occupant = AttachedContainer.ItemAt(slot);
+            if (occupant != null)
+            {
+                if (item.TryGetComponent(out Stackable sourceStack) && occupant.TryGetComponent(out Stackable targetStack))
+                {
+                    // Defer to a dedicated stack RPC which handles permissions and merging server-side
+                    Inventory.ClientStackItem(item, slot, AttachedContainer);
+                    return;
+                }
+                // Non-stackable over occupied slot: do nothing
+                return;
+            }
+
+            if (!AttachedContainer.CanContainItemAtPosition(item, slot))
+            {
+                return;
+            }
             if(item.Container != null && !item.Container.CanRemoveItem(item))
             {
                 return;
             }
 
-			// We make it not visible the time it is transfered to another slot, to avoid seeing the sprite flickering.
-			display.MakeVisible(false);
-			display.ShouldDrop = true;
+            // We make it not visible the time it is transfered to another slot, to avoid seeing the sprite flickering.
+            display.MakeVisible(false);
+            display.ShouldDrop = true;
             Inventory.ClientTransferItem(item, slot, AttachedContainer);
         }
 
